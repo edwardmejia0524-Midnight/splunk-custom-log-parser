@@ -32,9 +32,9 @@ sudo systemctl enable open-vm-tools
 ## 3. Data Parsing & Script Execution
 
 ### Log Preparation
-Processed raw log data and structured it into a standardized JSON format to ensure compatibility with Splunk's event parser.
+Processed raw log data and structured it into a standardized JSON format to ensure compatibility with Splunk's event parser. By converting raw strings into JSON *before* ingestion, we significantly reduce the processing overhead on the Splunk indexer.
 
-* Output Path: Generated and saved the final structured log file directly to the user's working directory: `/home/admineddie/src/parsed_output.json`
+* Output Path: Generated and saved the final structured log file directly to the working directory: `/home/admineddie/src/parsed_output.json`
 
 ### Implementation Script (Python Example)
 Below is the full implementation script demonstrating how raw log lines are parsed, converted, and written into a structured JSON format:
@@ -44,7 +44,7 @@ import json
 from datetime import datetime
 
 def parse_log_line(raw_line):
-    # Example custom parsing logic for security events
+    # Custom parsing logic for security events
     parts = raw_line.strip().split(" - ")
     log_entry = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     print(f"Successfully wrote parsed log to {output_filepath}")
 ```
 
-## 4. Linux File Permissions & Splunk Ingestion Workflow
+## 4. Linux File Permissions & Directory Management
 
 To ensure Splunk Enterprise (running under its dedicated service account) has proper read access to the generated logs without triggering permission errors or blocked ingestion streams, file access control lists and ownership were configured using the following terminal commands:
 
@@ -77,7 +77,33 @@ sudo chmod 750 /home/admineddie/src/parsed_output.json
 ls -la /home/admineddie/src/
 ```
 
-## 5. Repository Structure & Version Control Setup Steps
+## 5. Splunk Configuration & Data Ingestion Workflow
+
+Once the JSON logs were generated and permissions were secured, the next phase was actively configuring Splunk to monitor and ingest the data. 
+
+### Data Input Setup
+1. Navigated to **Settings > Data > Data Inputs** within the Splunk Web UI.
+2. Selected **Files & Directories** and clicked **New Local File & Directory**.
+3. Provided the absolute path to the generated log: `/home/admineddie/src/parsed_output.json`.
+4. Set the **Sourcetype** to `_json`. Because the Python script already structured the data into JSON, Splunk natively parses the key-value pairs (`timestamp`, `event_level`, `source_ip`, `action`, `status`) during the indexing phase without requiring complex Regex extraction rules in `props.conf` or `transforms.conf`.
+5. Assigned the input to a dedicated custom index (e.g., `security_lab_index`) to maintain strict data segregation from internal Splunk diagnostic logs.
+
+## 6. Splunk Search & Analysis Validation
+
+To verify the ingestion pipeline and test the newly extracted fields, the following Splunk Processing Language (SPL) queries were executed in the Search & Reporting app:
+
+```spl
+# 1. Verify data is arriving and fields are properly extracted
+index="security_lab_index" sourcetype="_json"
+
+# 2. Create a statistical timechart of events grouped by the extracted 'action' field
+index="security_lab_index" sourcetype="_json" | timechart count by action
+
+# 3. Identify and count the frequency of actions tied to specific IP addresses
+index="security_lab_index" sourcetype="_json" | stats count by source_ip, status
+```
+
+## 7. Repository Structure & Version Control Setup Steps
 
 * Repository Initialization and Remote Push Steps Performed:
   1. Created a new local working directory and initialized a local git repository:
