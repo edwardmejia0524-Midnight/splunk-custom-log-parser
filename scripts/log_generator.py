@@ -21,7 +21,7 @@ def generate_security_event():
     return event
 
 def main():
-    output_file = "parsed_output.json"
+    output_file = "/var/log/custom_app/app.log"
     print(f"Generating logs and writing to {output_file}...")
     
     # Writing a few sample JSON events to the file

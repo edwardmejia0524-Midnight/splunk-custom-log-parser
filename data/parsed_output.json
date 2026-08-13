@@ -1,0 +1,29 @@
+{
+    "total_entries": 3,
+    "failed_summary": {
+        "192.168.1.50": 2
+    },
+    "logs": [
+        {
+            "month": "Aug 12 10:15:23",
+            "host": "securitylabserver",
+            "status": "Failed",
+            "user": "admin",
+            "ip": "192.168.1.50"
+        },
+        {
+            "month": "Aug 12 10:15:25",
+            "host": "securitylabserver",
+            "status": "Failed",
+            "user": "admin",
+            "ip": "192.168.1.50"
+        },
+        {
+            "month": "Aug 12 10:16:02",
+            "host": "securitylabserver",
+            "status": "Accepted",
+            "user": "admineddie",
+            "ip": "192.168.68.50"
+        }
+    ]
+}
