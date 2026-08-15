@@ -4,117 +4,141 @@
 
 ```text
 splunk-custom-log-parser/
-├── README.md
-├── scripts/
-│   └── log_parser.py           # Python script for generating/parsing logs
+├── assets/
+│   └── execution.png           # CLI execution & output verification screenshot
 ├── configs/
-│   ├── inputs.conf             # Splunk input monitor and TCP receiver configuration
-│   └── indexes.conf            # Custom index definition (security_lab_index)
+│   ├── indexes.conf            # Custom index definition (security_lab_index)
+│   └── inputs.conf             # Splunk input monitor and TCP receiver configuration
 ├── data/
 │   └── parsed_output.json      # Structured JSON log output
-└── .gitignore
+├── sample_logs/
+│   └── auth.log                # Raw sample authentication logs for parser input
+├── scripts/
+│   ├── log_generator.py        # Python script for generating test logs
+│   └── parser.py               # Python script for parsing and formatting logs
+├── .gitignore
+└── README.md
 ```
-
----
 
 ## 1. Lab Overview & Architecture
 
-* **Environment:** Ubuntu Server virtual machine running in a local VMware-based home lab environment.
-* **Core Tools:** Splunk Enterprise, Splunk Universal Forwarder, Python scripting for log processing, Linux terminal utilities, Git, and GitHub.
-* **Objective:** Establish a comprehensive hands-on IT and cybersecurity home lab to generate, parse, ingest, version control, and analyze structured security data. This project documents the complete end-to-end workflow from hypervisor clipboard troubleshooting to secure GitHub remote publishing and Splunk log monitoring.
-
----
+- **Environment**: Ubuntu Server virtual machine running in a local VMware-based home lab environment.
+- **Core Tools**: Splunk Enterprise, Splunk Universal Forwarder, Python scripting for log processing, Linux terminal utilities, Git, and GitHub.
+- **Objective**: Establish a comprehensive hands-on IT and cybersecurity home lab to generate, parse, ingest, version control, and analyze structured security data. This project documents the complete end-to-end workflow from hypervisor clipboard troubleshooting to secure GitHub remote publishing and Splunk log monitoring.
 
 ## 2. Troubleshooting VM Clipboard Integration (Host-to-VM Copy/Paste)
 
 ### The Challenge
+
 During the initial deployment of the Ubuntu Server virtual machine, standard clipboard integration between the host operating system and the guest VM was disabled by default. This restricted the ability to copy configuration blocks, scripts, and administrative commands directly from the host into the terminal.
 
 ### The Fix & Diagnostic Commands
+
 1. Checked active system services and updated package lists:
+
 ```bash
 sudo apt update
 sudo systemctl status
 ```
 
 2. Installed the appropriate virtualization guest integration packages within the Ubuntu Server terminal to restore bi-directional copy/paste and drag-and-drop capabilities:
+
 ```bash
 sudo apt update && sudo apt install -y open-vm-tools open-vm-tools-desktop
 ```
 
 3. Restarted the virtual machine services and verified active guest daemon status:
+
 ```bash
 sudo systemctl restart open-vm-tools
 sudo systemctl enable open-vm-tools
 ```
 
----
-
 ## 3. Data Parsing & Script Execution
 
-### Log Preparation
-Processed raw log data and structured it into a standardized JSON format to ensure compatibility with Splunk's event parser. By converting raw strings into JSON *before* ingestion, we significantly reduce the processing overhead on the Splunk indexer.
+### Log Preparation & Input Source
 
-* Output Path: Generated and saved the final structured log file directly to the working directory: `/home/admineddie/src/parsed_output.json`
+The parser reads raw authentication logs from `sample_logs/auth.log`, processes the telemetry, and structures it into a standardized JSON format (`data/parsed_output.json`) to ensure compatibility with Splunk's event parser. By converting raw strings into JSON before ingestion, we significantly reduce the processing overhead on the Splunk indexer.
 
-### Implementation Script (Python Example)
-Below is the full implementation script demonstrating how raw log lines are parsed, converted, and written into a structured JSON format:
+### Implementation Script (`scripts/parser.py`)
+
+Below is the core parsing logic used to read raw log lines, extract metrics like failed login attempts by source IP, and export the structured results:
 
 ```python
+import os
 import json
-from datetime import datetime
+from collections import Counter
 
-def parse_log_line(raw_line):
-    # Custom parsing logic for security events
-    parts = raw_line.strip().split(" - ")
-    log_entry = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "event_level": parts[0],
-        "source_ip": parts[1],
-        "action": parts[2],
-        "status": "SUCCESS"
-    }
-    return log_entry
+LOG_PATH = "sample_logs/auth.log"
+OUTPUT_PATH = "data/parsed_output.json"
 
-# Sample execution and file write operations
+def parse_logs():
+    if not os.path.exists(LOG_PATH):
+        print(f"Error: The file {LOG_PATH} was not found.")
+        return [], []
+
+    failed_ips = []
+    parsed_entries = []
+
+    with open(LOG_PATH, "r") as f:
+        for line in f:
+            if "Failed password" in line:
+                parts = line.strip().split()
+                ip = "Unknown"
+                for i, part in enumerate(parts):
+                    if part == "from":
+                        ip = parts[i+1]
+                        break
+                failed_ips.append(ip)
+                parsed_entries.append({
+                    "timestamp": " ".join(parts[:3]), 
+                    "event": "Failed Login", 
+                    "source_ip": ip
+                })
+
+    print(f"Successfully parsed {len(parsed_entries)} log entries.")
+    return failed_ips, parsed_entries
+
+def export_to_json(entries, output_path=OUTPUT_PATH):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(entries, f, indent=4)
+    print(f"Exported parsed logs to {output_path}")
+
 if __name__ == "__main__":
-    raw_sample = "INFO - 192.168.1.50 - Authentication Attempt"
-    parsed_data = parse_log_line(raw_sample)
-    
-    output_filepath = "/home/admineddie/src/parsed_output.json"
-    with open(output_filepath, "w") as f:
-        json.dump(parsed_data, f, indent=4)
-    print(f"Successfully wrote parsed log to {output_filepath}")
+    failures, entries = parse_logs()
+    if failures:
+        print("\nFailed Login Summary by IP:")
+        for ip, count in Counter(failures).items():
+            print(f"  - IP {ip}: {count} failed attempt(s)")
+    if entries:
+        export_to_json(entries)
 ```
-
----
 
 ## 4. Linux File Permissions & Directory Management
 
 To ensure Splunk Enterprise (running under its dedicated service account) has proper read access to the generated logs without triggering permission errors or blocked ingestion streams, file access control lists and ownership were configured using the following terminal commands:
 
 ```bash
-mkdir -p /home/admineddie/src/
-sudo chown -R admineddie:splunk /home/admineddie/src/
-sudo chmod 750 /home/admineddie/src/parsed_output.json
-ls -la /home/admineddie/src/
+mkdir -p data/
+sudo chown -R admineddie:splunk data/
+sudo chmod 750 data/parsed_output.json
+ls -la data/
 ```
-
----
 
 ## 5. Splunk Configuration & Data Ingestion Pipeline
 
 ### Data Receiver & Universal Forwarder Configuration
-1. **Receiver Setup (Port 9997):** Configured Splunk Enterprise to listen on TCP port `9997` under `[splunktcp://9997]` in `inputs.conf` to receive forwarded data streams.
-2. **Management Port Resolution (Port 8090):** Resolved a management port conflict with Splunk Enterprise (which binds to default port `8089`) by reconfiguring the Splunk Universal Forwarder daemon to utilize port `8090`.
-3. **Forwarding Rule:** Established active log forwarding from the Universal Forwarder (`127.0.0.1:9997`) to push local data streams into the Splunk Enterprise indexer.
+
+- **Receiver Setup (Port 9997)**: Configured Splunk Enterprise to listen on TCP port 9997 under `[splunktcp://9997]` in `inputs.conf` to receive forwarded data streams.
+- **Management Port Resolution (Port 8090)**: Resolved a management port conflict with Splunk Enterprise (which binds to default port 8089) by reconfiguring the Splunk Universal Forwarder daemon to utilize port 8090.
+- **Forwarding Rule**: Established active log forwarding from the Universal Forwarder (`127.0.0.1:9997`) to push local data streams into the Splunk Enterprise indexer.
 
 ### Data Input Setup & Parsing
-1. Configured file monitoring for the absolute log path: `/home/admineddie/src/parsed_output.json`.
-2. Assigned **Sourcetype** to `_json`. Splunk natively parses key-value pairs and arrays (`timestamp`, `total_entries`, `logs{}.ip`, `logs{}.user`, `logs{}.status`) during indexing without requiring custom Regex extraction rules in `props.conf` or `transforms.conf`.
-3. Routed event streams directly to the designated custom index: `security_lab_index`.
 
----
+- Configured file monitoring for the absolute log path: `data/parsed_output.json`.
+- Assigned Sourcetype to `_json`. Splunk natively parses key-value pairs and arrays during indexing without requiring custom Regex extraction rules in `props.conf` or `transforms.conf`.
+- Routed event streams directly to the designated custom index: `security_lab_index`.
 
 ## 6. Splunk Search & Analysis Validation
 
@@ -124,40 +148,51 @@ To verify the ingestion pipeline and test the newly extracted structured JSON fi
 # 1. Verify general ingestion and field extraction
 index="security_lab_index" sourcetype="_json"
 
-# 2. Table formatted array fields extracted from JSON payload
-index=security_lab_index | table _time host total_entries logs{}.user logs{}.ip logs{}.status
+# 2. Table formatted fields extracted from JSON payload
+index=security_lab_index | table _time source_ip event
 
-# 3. Create a statistical timechart of events grouped by action
-index="security_lab_index" sourcetype="_json" | timechart count by action
+# 3. Create a statistical timechart of events grouped by source IP
+index="security_lab_index" sourcetype="_json" | timechart count by source_ip
 ```
-
----
 
 ## 7. Repository Structure & Version Control Setup Steps
 
 ### Repository Initialization and Remote Push Steps Performed
+
 1. Created project directory layout:
-   ```bash
-   mkdir -p ~/splunk-custom-log-parser/{scripts,configs,data}
-   cd ~/splunk-custom-log-parser
-   git init
-   ```
+
+```bash
+mkdir -p ~/splunk-custom-log-parser/{scripts,configs,data,sample_logs,assets}
+cd ~/splunk-custom-log-parser
+git init
+```
 
 2. Staged and committed initial project files to local version control:
-   ```bash
-   git add .
-   git commit -m "Initial commit of custom log parser lab workflow and configs"
-   ```
 
-3. Configured remote repository tracking and pushed to the `main` branch:
-   ```bash
-   git remote add origin [https://github.com/edwardmejia0524-Midnight/splunk-custom-log-parser.git](https://github.com/edwardmejia0524-Midnight/splunk-custom-log-parser.git)
-   git branch -M main
-   git push -u origin main
-   ```
+```bash
+git add .
+git commit -m "Initial commit of custom log parser lab workflow and configs"
+```
+
+3. Configured remote repository tracking and pushed to the main branch:
+
+```bash
+git remote add origin https://github.com/edwardmejia0524-Midnight/splunk-custom-log-parser.git
+git branch -M main
+git push -u origin main
+```
 
 ### File & Directory Descriptions
-* `README.md` – Complete technical project documentation, architectural overview, and troubleshooting steps.
-* `scripts/` – Contains Python log generation and JSON formatting logic.
-* `configs/` – Contains Splunk `inputs.conf` and `indexes.conf` ingestion definitions.
-* `data/` – Contains sample raw input logs and parsed output JSON files.
+
+| Path | Description |
+|---|---|
+| `assets/` | Contains CLI execution and output verification screenshots. |
+| `configs/` | Contains Splunk `inputs.conf` and `indexes.conf` ingestion definitions. |
+| `data/` | Contains structured JSON output files (`parsed_output.json`). |
+| `sample_logs/` | Contains raw test input logs (`auth.log`) used for parser execution. |
+| `scripts/` | Contains Python automation scripts (`log_generator.py`, `parser.py`). |
+| `README.md` | Complete technical project documentation, architectural overview, and troubleshooting steps. |
+
+## 8. Execution Output & Verification
+
+![Execution Output & Verification](assets/execution.png)
