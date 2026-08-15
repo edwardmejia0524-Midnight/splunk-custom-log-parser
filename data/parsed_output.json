@@ -1,29 +1,17 @@
-{
-    "total_entries": 3,
-    "failed_summary": {
-        "192.168.1.50": 2
+[
+    {
+        "timestamp": "Aug 15 08:30:12",
+        "event": "Failed Login",
+        "source_ip": "192.168.1.50"
     },
-    "logs": [
-        {
-            "month": "Aug 12 10:15:23",
-            "host": "securitylabserver",
-            "status": "Failed",
-            "user": "admin",
-            "ip": "192.168.1.50"
-        },
-        {
-            "month": "Aug 12 10:15:25",
-            "host": "securitylabserver",
-            "status": "Failed",
-            "user": "admin",
-            "ip": "192.168.1.50"
-        },
-        {
-            "month": "Aug 12 10:16:02",
-            "host": "securitylabserver",
-            "status": "Accepted",
-            "user": "admineddie",
-            "ip": "192.168.68.50"
-        }
-    ]
-}
+    {
+        "timestamp": "Aug 15 08:30:15",
+        "event": "Failed Login",
+        "source_ip": "192.168.1.50"
+    },
+    {
+        "timestamp": "Aug 15 08:35:40",
+        "event": "Failed Login",
+        "source_ip": "192.168.1.50"
+    }
+]

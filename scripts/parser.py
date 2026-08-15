@@ -1,47 +1,48 @@
-import re
+import os
 import json
-from collections import defaultdict
+from collections import Counter
 
-def parse_auth_log(file_path):
-    pattern = re.compile(
-        r'(?P<month>[A-Z][a-z]{2}\s+\d+\s+\d+:\d+:\d+)\s+'
-        r'(?P<host>\S+)\s+'
-        r'sshd\[\d+\]:\s+'
-        r'(?P<status>Accepted|Failed)\s+.*?\s+'
-        r'(?:for\s+(?:invalid\s+user\s+)?(?P<user>\S+)\s+)?'
-        r'from\s+(?P<ip>\d+\.\d+\.\d+\.\d+)'
-    )
-    failed_attempts = defaultdict(int)
-    parsed_logs = []
-    try:
-        with open(file_path, 'r') as file:
-            for line in file:
-                match = pattern.search(line)
-                if match:
-                    data = match.groupdict()
-                    parsed_logs.append(data)
-                    if data['status'] == 'Failed':
-                        failed_attempts[data['ip']] += 1
-        return parsed_logs, failed_attempts
-    except FileNotFoundError:
-        print(f"Error: The file {file_path} was not found.")
-        return [], {}
+LOG_PATH = "sample_logs/auth.log"
+OUTPUT_PATH = "data/parsed_output.json"
 
-def export_to_json(logs, failures, output_path="src/parsed_output.json"):
-    output_data = {
-        "total_entries": len(logs),
-        "failed_summary": dict(failures),
-        "logs": logs
-    }
-    with open(output_path, 'w') as f:
-        json.dump(output_data, f, indent=4)
-    print(f"Report successfully exported to {output_path}")
+def parse_logs():
+    if not os.path.exists(LOG_PATH):
+        print(f"Error: The file {LOG_PATH} was not found.")
+        return [], []
+
+    failed_ips = []
+    parsed_entries = []
+
+    with open(LOG_PATH, "r") as f:
+        for line in f:
+            if "Failed password" in line:
+                parts = line.strip().split()
+                ip = "Unknown"
+                for i, part in enumerate(parts):
+                    if part == "from":
+                        ip = parts[i+1]
+                        break
+                failed_ips.append(ip)
+                parsed_entries.append({
+                    "timestamp": " ".join(parts[:3]), 
+                    "event": "Failed Login", 
+                    "source_ip": ip
+                })
+
+    print(f"Successfully parsed {len(parsed_entries)} log entries.")
+    return failed_ips, parsed_entries
+
+def export_to_json(entries, output_path=OUTPUT_PATH):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(entries, f, indent=4)
+    print(f"Exported parsed logs to {output_path}")
 
 if __name__ == "__main__":
-    logs, failures = parse_auth_log("sample_logs/auth.log")
-    print(f"Successfully parsed {len(logs)} log entries.")
-    print("\nFailed Login Summary by IP:")
-    for ip, count in failures.items():
-        print(f"  - IP {ip}: {count} failed attempt(s)")
-    
-    export_to_json(logs, failures)
+    failures, entries = parse_logs()
+    if failures:
+        print("\nFailed Login Summary by IP:")
+        for ip, count in Counter(failures).items():
+            print(f"  - IP {ip}: {count} failed attempt(s)")
+    if entries:
+        export_to_json(entries)
